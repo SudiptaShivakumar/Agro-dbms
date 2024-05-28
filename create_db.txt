@@ -1,0 +1,146 @@
+-- User table
+CREATE TABLE User (
+    UserID INT PRIMARY KEY,
+    Username VARCHAR(50) UNIQUE,
+    Password VARCHAR(255),
+    Email VARCHAR(100),
+    UserType ENUM('Farmer', 'Consumer'),
+    RegistrationDate DATE,
+    -- Add other attributes as needed
+    CONSTRAINT chk_UserType CHECK (UserType IN ('Farmer', 'Consumer'))
+);
+
+-- Farmer table
+CREATE TABLE Farmer (
+    FarmerID INT PRIMARY KEY,
+    UserID INT UNIQUE,
+    FarmName VARCHAR(50),
+    Location VARCHAR(255),
+    ContactInfo VARCHAR(15),
+    Description TEXT,
+    FOREIGN KEY (UserID) REFERENCES User(UserID)
+);
+
+-- Product table
+CREATE TABLE Product (
+    ProductID INT PRIMARY KEY,
+    FarmerID INT,
+    ProductName VARCHAR(50),
+    Description TEXT,
+    Price DECIMAL(10, 2),
+    QuantityAvailable INT,
+    Images VARCHAR(255), -- Assuming a path to images
+    FOREIGN KEY (FarmerID) REFERENCES Farmer(FarmerID)
+);
+
+-- Consumer table
+CREATE TABLE Consumer (
+    ConsumerID INT PRIMARY KEY,
+    UserID INT UNIQUE,
+    FullName VARCHAR(100),
+    Address VARCHAR(255),
+    ContactInfo VARCHAR(15),
+    FOREIGN KEY (UserID) REFERENCES User(UserID)
+);
+
+-- Order table
+CREATE TABLE Orders (
+    OrderID INT AUTO_INCREMENT PRIMARY KEY,
+    ConsumerID INT,
+    OrderDate DATE,
+    TotalAmount DECIMAL(10, 2),
+    OrderStatus VARCHAR(20),
+    ProductID INT,
+    Quantity INT,
+    FOREIGN KEY (ConsumerID) REFERENCES User(UserID),
+    FOREIGN KEY (ProductID) REFERENCES Product(ProductID)
+);
+
+
+CREATE TABLE Payment (
+    PaymentID INT AUTO_INCREMENT PRIMARY KEY,
+    OrderID INT,
+    Amount DECIMAL(10, 2),
+    PaymentMethod VARCHAR(50),
+    TransactionStatus VARCHAR(20),
+    Timestamp TIMESTAMP,
+    FOREIGN KEY (OrderID) REFERENCES Orders(OrderID)
+);
+
+-- inserting into user TABLE
+INSERT INTO User (UserID, Username, Password, Email, UserType, RegistrationDate) VALUES
+(101, 'farmer1', 'password1', 'john@example.com', 'Farmer', '2023-01-15'),
+(102, 'farmer2', 'password2', 'mary@example.com', 'Farmer', '2023-02-20'),
+(103, 'consumer1', 'password3', 'jane@example.com', 'Consumer', '2023-03-25');
+
+INSERT INTO Product (ProductID, FarmerID, ProductName, Description, Price, QuantityAvailable, Images) VALUES 
+    (1, 121, 'Apples', 'Fresh organic apples', 5.99, 100, 'apples.jpg'),
+    (2, 125, 'Oranges', 'Juicy oranges', 4.49, 150, 'oranges.jpg'),
+    (3, 127, 'Bananas', 'Ripe bananas', 3.99, 200, 'bananas.jpg'),
+    (4, 135, 'Strawberries', 'Delicious strawberries', 6.99, 80, 'strawberries.jpg'),
+    (5, 139, 'Tomatoes', 'Organic tomatoes', 2.99, 120, 'tomatoes.jpg'),
+    (6, 139, 'groundnut', 'Fresh groundnut', 5.99, 100, 'groundnut.jpg'),
+    (7, 140, 'Capsicum', 'Juicy capcicum', 4.49, 150, 'capsicum.jpg');
+
+--updating farmer table
+ALTER TABLE Farmer
+ADD COLUMN TotalBalance DECIMAL(10, 2) DEFAULT 0.00;
+
+--triggers for updating farmer table
+DELIMITER //
+CREATE TRIGGER update_farmer_balance
+AFTER INSERT ON Orders
+FOR EACH ROW
+BEGIN
+    DECLARE farmer_id INT;
+    DECLARE payment_amount DECIMAL(10, 2);
+    DECLARE current_balance DECIMAL(10, 2);
+    
+    -- Get the farmer ID and payment amount for the inserted row
+    SELECT p.FarmerID, o.TotalAmount
+    INTO farmer_id,payment_amount
+    FROM Orders o
+    JOIN Product p ON o.ProductID = p.ProductID
+    WHERE o.OrderID = (SELECT OrderID FROM Orders ORDER BY OrderID DESC LIMIT 1);
+
+    -- Get the current balance of the farmer
+    SELECT TotalBalance INTO current_balance
+    FROM Farmer
+    WHERE FarmerID = farmer_id;
+
+    -- Calculate the new balance
+    SET current_balance = current_balance + payment_amount;
+
+    -- Update the TotalBalance in the Farmer table
+    UPDATE Farmer
+    SET TotalBalance = current_balance
+    WHERE FarmerID = farmer_id;
+END;
+//
+DELIMITER ;
+
+
+--triggers for updating the product table
+DELIMITER //
+
+CREATE TRIGGER update_product_quantity
+AFTER UPDATE ON Orders
+FOR EACH ROW
+BEGIN
+    DECLARE new_quantity INT;
+    DECLARE product_id INT;
+
+    IF NEW.Quantity <> OLD.Quantity THEN
+        SET new_quantity = NEW.Quantity - OLD.Quantity;
+        SET product_id = NEW.ProductID;
+
+        UPDATE Product
+        SET QuantityAvailable = QuantityAvailable - new_quantity
+        WHERE ProductID = product_id;
+    END IF;
+END//
+
+DELIMITER ;
+
+
+
